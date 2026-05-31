@@ -17,18 +17,20 @@ st.title("🐟 Fish Counter AI")
 st.write("Upload gambar benih ikan, lalu klik tombol untuk menghitung jumlah ikan.")
 
 
-# Link model TFLite dari Google Drive
+# Link model TFLite BARU dari Google Drive
 MODEL_URL = "https://drive.google.com/uc?id=1SHbi9cG18JVchFhqz3DSxFUtv2HOeXa3"
-MODEL_PATH = "fish_counter_model.tflite"
+
+# Nama file dibuat baru agar tidak memakai cache/model lama
+MODEL_PATH = "fish_counter_model_v2.tflite"
 
 
 @st.cache_resource
-def load_model():
-    if not os.path.exists(MODEL_PATH):
-        with st.spinner("Mengunduh model..."):
-            gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+def load_model(model_url, model_path):
+    if not os.path.exists(model_path):
+        with st.spinner("Mengunduh model baru..."):
+            gdown.download(model_url, model_path, quiet=False)
 
-    interpreter = Interpreter(model_path=MODEL_PATH)
+    interpreter = Interpreter(model_path=model_path)
     interpreter.allocate_tensors()
     return interpreter
 
@@ -37,12 +39,10 @@ def predict_fish_count(image, interpreter):
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 
-    # Preprocessing gambar
     img = image.resize((224, 224))
     img_array = np.array(img).astype(np.float32) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
 
-    # Sesuaikan input jika model TFLite bertipe quantized
     input_dtype = input_details[0]["dtype"]
 
     if input_dtype in [np.uint8, np.int8]:
@@ -59,14 +59,12 @@ def predict_fish_count(image, interpreter):
     else:
         img_array = img_array.astype(np.float32)
 
-    # Prediksi
     interpreter.set_tensor(input_details[0]["index"], img_array)
     interpreter.invoke()
 
     prediction = interpreter.get_tensor(output_details[0]["index"])
     pred_value = float(prediction.ravel()[0])
 
-    # Jika output TFLite bertipe quantized, kembalikan ke skala asli
     output_dtype = output_details[0]["dtype"]
 
     if output_dtype in [np.uint8, np.int8, np.int16, np.int32]:
@@ -83,8 +81,8 @@ def predict_fish_count(image, interpreter):
     return hasil
 
 
-# Load model
-interpreter = load_model()
+# Load model baru
+interpreter = load_model(MODEL_URL, MODEL_PATH)
 
 
 uploaded_file = st.file_uploader(
