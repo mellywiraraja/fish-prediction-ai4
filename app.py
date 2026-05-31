@@ -1,99 +1,90 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-import tensorflow as tf
 import gdown
 import os
-import zipfile
 
-# =========================
-# CONFIG
-# =========================
-st.set_page_config(page_title="Fish Counter AI", layout="centered")
+from ai_edge_litert.interpreter import Interpreter
 
-MODEL_DIR = "model_saved"
-ZIP_PATH = "model.zip"
 
-# =========================
-# DOWNLOAD & EXTRACT MODEL
-# =========================
-if not os.path.exists(MODEL_DIR):
-    with st.spinner("Mengunduh model..."):
-        url = "https://drive.google.com/file/d/1-A9fg1j-Sk523xJtagU5rfLcEM5m2rDj"
-        gdown.download(url, ZIP_PATH, quiet=False)
+st.set_page_config(
+    page_title="Fish Counter AI",
+    page_icon="🐟",
+    layout="centered"
+)
 
-        with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
-            zip_ref.extractall()
+st.title("🐟 Fish Counter AI")
+st.write("Upload gambar benih ikan, lalu sistem akan memperkirakan jumlah benih ikan.")
 
-        os.remove(ZIP_PATH)
 
-# =========================
-# LOAD MODEL (SAVEDMODEL)
-# =========================
+# Link model TFLite dari Google Drive
+MODEL_URL = "https://drive.google.com/uc?id=1zpEbb30FK4sugpBCzi_Ijm8tnu2MPbkL"
+MODEL_PATH = "fish_counter_model.tflite"
+
+
 @st.cache_resource
 def load_model():
-    model = tf.saved_model.load(MODEL_DIR)
-    return model.signatures["serving_default"]
+    # Download model jika belum ada
+    if not os.path.exists(MODEL_PATH):
+        with st.spinner("Mengunduh model..."):
+            gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
 
-with st.spinner("Memuat model..."):
-    model = load_model()
+    # Load model TFLite
+    interpreter = Interpreter(model_path=MODEL_PATH)
+    interpreter.allocate_tensors()
 
-# =========================
-# UI
-# =========================
-st.title("🐟 Fish Counter AI")
-st.markdown("Prediksi jumlah benih ikan dari citra secara otomatis")
+    return interpreter
 
-uploaded_file = st.file_uploader("Upload Gambar", type=["jpg", "jpeg", "png"])
+
+# Load interpreter
+interpreter = load_model()
+
+# Ambil detail input-output model
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+
+uploaded_file = st.file_uploader(
+    "Upload gambar benih ikan",
+    type=["jpg", "jpeg", "png"]
+)
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Gambar", use_container_width=True)
 
-    # =========================
-    # PREPROCESSING (SESUAI TRAINING KAMU)
-    # =========================
+    st.image(
+        image,
+        caption="Gambar yang di-upload",
+        use_container_width=True
+    )
+
+    # Preprocessing gambar
     img = image.resize((224, 224))
-
-    # 🔥 PENTING: TANPA NORMALISASI
-    img_array = np.array(img).astype(np.float32)
-
+    img_array = np.array(img).astype(np.float32) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
 
-    # DEBUG (boleh dihapus nanti)
-    st.write("Shape:", img_array.shape)
-    st.write("Min-Max:", img_array.min(), img_array.max())
+    # Sesuaikan tipe input dengan model TFLite
+    input_dtype = input_details[0]["dtype"]
 
-    # =========================
-    # PREDICTION
-    # =========================
-    if st.button("Hitung Jumlah Ikan"):
-        with st.spinner("Memproses..."):
-            try:
-                input_tensor = tf.convert_to_tensor(img_array)
+    if input_dtype == np.uint8:
+        scale, zero_point = input_details[0]["quantization"]
 
-                output = model(input_tensor)
+        if scale > 0:
+            img_array = img_array / scale + zero_point
 
-                prediction = list(output.values())[0].numpy()
+        img_array = img_array.astype(np.uint8)
+    else:
+        img_array = img_array.astype(np.float32)
 
-                # ambil hasil
-                raw_value = prediction[0][0]
+    # Prediksi
+    interpreter.set_tensor(input_details[0]["index"], img_array)
+    interpreter.invoke()
 
-                # rounding + safety
-                fish_count = int(np.round(raw_value))
-                fish_count = max(0, fish_count)
+    prediction = interpreter.get_tensor(output_details[0]["index"])
 
-                # tampilkan
-                st.success(f"Jumlah ikan terdeteksi: {fish_count}")
+    hasil = int(np.round(float(prediction.ravel()[0])))
 
-                # debug tambahan (opsional)
-                st.write("Raw prediction:", raw_value)
+    if hasil < 0:
+        hasil = 0
 
-            except Exception as e:
-                st.error(f"Terjadi error saat prediksi: {e}")
-
-# =========================
-# FOOTER
-# =========================
-st.markdown("---")
-st.caption("Built with Streamlit & TensorFlow")
+    st.success(f"Estimasi jumlah benih ikan: {hasil} ekor")
