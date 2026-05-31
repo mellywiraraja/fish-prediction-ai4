@@ -14,11 +14,11 @@ st.set_page_config(
 )
 
 st.title("🐟 Fish Counter AI")
-st.write("Upload gambar benih ikan, lalu sistem akan memperkirakan jumlah benih ikan.")
+st.write("Upload gambar benih ikan, lalu klik tombol untuk menghitung jumlah ikan.")
 
 
 # Link model TFLite dari Google Drive
-MODEL_URL = "https://drive.google.com/uc?id=1zpEbb30FK4sugpBCzi_Ijm8tnu2MPbkL"
+MODEL_URL = "https://drive.google.com/uc?id=1SHbi9cG18JVchFhqz3DSxFUtv2HOeXa3"
 MODEL_PATH = "fish_counter_model.tflite"
 
 
@@ -33,25 +33,9 @@ def load_model():
     return interpreter
 
 
-interpreter = load_model()
-
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
-
-
-uploaded_file = st.file_uploader(
-    "Upload gambar benih ikan",
-    type=["jpg", "jpeg", "png"]
-)
-
-if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-
-    st.image(
-        image,
-        caption="Gambar yang di-upload",
-        use_container_width=True
-    )
+def predict_fish_count(image, interpreter):
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
 
     # Preprocessing gambar
     img = image.resize((224, 224))
@@ -80,8 +64,6 @@ if uploaded_file is not None:
     interpreter.invoke()
 
     prediction = interpreter.get_tensor(output_details[0]["index"])
-
-    # Ambil nilai prediksi mentah
     pred_value = float(prediction.ravel()[0])
 
     # Jika output TFLite bertipe quantized, kembalikan ke skala asli
@@ -98,4 +80,32 @@ if uploaded_file is not None:
     if hasil < 0:
         hasil = 0
 
-    st.success(f"Estimasi jumlah benih ikan: {hasil} ekor")
+    return hasil
+
+
+# Load model
+interpreter = load_model()
+
+
+uploaded_file = st.file_uploader(
+    "Upload gambar benih ikan",
+    type=["jpg", "jpeg", "png"]
+)
+
+if uploaded_file is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+
+    st.image(
+        image,
+        caption="Gambar yang di-upload",
+        use_container_width=True
+    )
+
+    if st.button("Hitung Jumlah Ikan", type="primary", use_container_width=True):
+        with st.spinner("Sedang menghitung jumlah ikan..."):
+            hasil = predict_fish_count(image, interpreter)
+
+        st.success(f"Estimasi jumlah benih ikan: {hasil} ekor")
+
+else:
+    st.info("Silakan upload gambar terlebih dahulu.")
