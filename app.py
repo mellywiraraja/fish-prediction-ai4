@@ -24,22 +24,17 @@ MODEL_PATH = "fish_counter_model.tflite"
 
 @st.cache_resource
 def load_model():
-    # Download model jika belum ada
     if not os.path.exists(MODEL_PATH):
         with st.spinner("Mengunduh model..."):
             gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
 
-    # Load model TFLite
     interpreter = Interpreter(model_path=MODEL_PATH)
     interpreter.allocate_tensors()
-
     return interpreter
 
 
-# Load interpreter
 interpreter = load_model()
 
-# Ambil detail input-output model
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
@@ -63,16 +58,20 @@ if uploaded_file is not None:
     img_array = np.array(img).astype(np.float32) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
 
-    # Sesuaikan tipe input dengan model TFLite
+    # Sesuaikan input jika model TFLite bertipe quantized
     input_dtype = input_details[0]["dtype"]
 
-    if input_dtype == np.uint8:
-        scale, zero_point = input_details[0]["quantization"]
+    if input_dtype in [np.uint8, np.int8]:
+        input_scale, input_zero_point = input_details[0]["quantization"]
 
-        if scale > 0:
-            img_array = img_array / scale + zero_point
+        if input_scale > 0:
+            img_array = img_array / input_scale + input_zero_point
 
-        img_array = img_array.astype(np.uint8)
+        img_array = np.clip(
+            img_array,
+            np.iinfo(input_dtype).min,
+            np.iinfo(input_dtype).max
+        ).astype(input_dtype)
     else:
         img_array = img_array.astype(np.float32)
 
@@ -82,7 +81,19 @@ if uploaded_file is not None:
 
     prediction = interpreter.get_tensor(output_details[0]["index"])
 
-    hasil = int(np.round(float(prediction.ravel()[0])))
+    # Ambil nilai prediksi mentah
+    pred_value = float(prediction.ravel()[0])
+
+    # Jika output TFLite bertipe quantized, kembalikan ke skala asli
+    output_dtype = output_details[0]["dtype"]
+
+    if output_dtype in [np.uint8, np.int8, np.int16, np.int32]:
+        output_scale, output_zero_point = output_details[0]["quantization"]
+
+        if output_scale > 0:
+            pred_value = (pred_value - output_zero_point) * output_scale
+
+    hasil = int(np.round(pred_value))
 
     if hasil < 0:
         hasil = 0
