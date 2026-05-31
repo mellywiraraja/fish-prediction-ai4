@@ -16,6 +16,34 @@ st.set_page_config(
 st.title("🐟 Fish Counter AI")
 st.write("Upload gambar benih ikan, lalu klik tombol untuk menghitung jumlah ikan.")
 
+# CSS untuk tombol hijau
+st.markdown(
+    """
+    <style>
+    div.stButton > button {
+        background-color: #16a34a !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.6rem 1rem !important;
+        font-weight: 600 !important;
+    }
+
+    div.stButton > button:hover {
+        background-color: #15803d !important;
+        color: white !important;
+        border: none !important;
+    }
+
+    div.stButton > button:active {
+        background-color: #166534 !important;
+        color: white !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # Link model TFLite terbaru dari Google Drive
 MODEL_URL = "https://drive.google.com/uc?id=1SHbi9cG18JVchFhqz3DSxFUtv2HOeXa3"
@@ -42,7 +70,6 @@ def predict_fish_count(image, interpreter):
     # Resize gambar sesuai input model
     img = image.resize((224, 224))
 
-    # Penting:
     # Tidak memakai /255.0
     # Input gambar menggunakan rentang 0-255
     img_array = np.array(img).astype(np.float32)
@@ -108,7 +135,7 @@ if uploaded_file is not None:
         use_container_width=True
     )
 
-    if st.button("Hitung Jumlah Ikan", type="primary", use_container_width=True):
+    if st.button("Hitung Jumlah Ikan", use_container_width=True):
         with st.spinner("Sedang menghitung jumlah ikan..."):
             hasil = predict_fish_count(image, interpreter)
 
